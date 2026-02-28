@@ -1,0 +1,292 @@
+#include <iostream>
+#include <vector>
+#include <string>
+#include <map>
+#include <iomanip>
+#include <cctype>
+
+using namespace std;
+
+// ==========================================
+// TOKENS Y ANALIZADOR LÉXICO (Requisito 8)
+// ==========================================
+enum TokenType { KEYWORD, REGISTER, NUMBER, DELIMITER, UNKNOWN };
+
+struct Token {
+    TokenType type;
+    string value;
+};
+
+class LexicalAnalyzer {
+public:
+    // Autómata simple para escanear la instrucción
+    vector<Token> tokenize(const string& source) {
+        vector<Token> tokens;
+        int i = 0;
+        int n = source.length();
+
+        while (i < n) {
+            char c = source[i];
+
+            // Delimitadores (espacios, comas)
+            if (isspace(c) || c == ',' || c == ';') {
+                i++;
+                continue; // Los omitimos en el output para simplificar, pero actúan como separadores
+            }
+
+            // Letras: Keywords o Registros (Identifiers)
+            if (isalpha(c)) {
+                string word = "";
+                while (i < n && isalpha(source[i])) {
+                    word += toupper(source[i]);
+                    i++;
+                }
+                if (word == "AL" || word == "AH" || word == "BL" || word == "BH") {
+                    tokens.push_back({REGISTER, word});
+                } else {
+                    tokens.push_back({KEYWORD, word}); // START, ADD, MOVE, etc.
+                }
+                continue;
+            }
+
+            // Dígitos: Direcciones de memoria o valores (Numbers)
+            if (isdigit(c)) {
+                string num = "";
+                while (i < n && isdigit(source[i])) {
+                    num += source[i];
+                    i++;
+                }
+                tokens.push_back({NUMBER, num});
+                continue;
+            }
+
+            // Desconocido
+            tokens.push_back({UNKNOWN, string(1, c)});
+            i++;
+        }
+        return tokens;
+    }
+};
+
+// ==========================================
+// CLASE INSTRUCCIÓN (Requisito 2 y 8)
+// ==========================================
+class Instruction {
+private:
+    string name;
+    vector<string> arguments;
+    string interpretation;
+    int length;
+
+public:
+    Instruction() : name(""), interpretation(""), length(0) {}
+    
+    Instruction(string n, vector<string> args, string interp) 
+        : name(n), arguments(args), interpretation(interp) {
+        length = args.size();
+    }
+
+    // Getters
+    string getName() const { return name; }
+    vector<string> getArguments() const { return arguments; }
+    string getInterpretation() const { return interpretation; }
+    int getLength() const { return length; }
+};
+
+// ==========================================
+// UNIDAD DE CONTROL (Requisito 8)
+// ==========================================
+class ControlUnit {
+private:
+    LexicalAnalyzer lexer;
+
+public:
+    // Decodifica el IR y retorna un objeto Instruction formal
+    Instruction decode(const string& ir) {
+        vector<Token> tokens = lexer.tokenize(ir);
+        
+        if (tokens.empty()) return Instruction();
+
+        string name = tokens[0].value;
+        vector<string> args;
+        for (size_t i = 1; i < tokens.size(); i++) {
+            args.push_back(tokens[i].value);
+        }
+
+        string interpretation = "Instruccion no reconocida";
+
+        // Asignación de interpretaciones
+        if (name == "START") interpretation = "Inicio del programa";
+        else if (name == "STOP") interpretation = "Fin del programa";
+        else if (name == "MOVE") interpretation = "Mover valores a un registro desde una direccion";
+        else if (name == "ADD")  interpretation = "Sumar valores contenidos en registros";
+        else if (name == "SUB")  interpretation = "Restar valores contenidos en registros";
+        else if (name == "MUL")  interpretation = "Multiplicar valores contenidos en registros";
+        else if (name == "DIV")  interpretation = "Dividir valores contenidos en registros";
+        else if (name == "STO")  interpretation = "Almacenar resultados en una direccion de memoria";
+
+        return Instruction(name, args, interpretation);
+    }
+};
+
+// ==========================================
+// MEMORIA PRINCIPAL
+// ==========================================
+class Memory {
+private:
+    vector<string> cells;
+public:
+    Memory(int size = 256) { cells.resize(size, "0"); }
+    string read(int address) { return (address >= 0 && address < cells.size()) ? cells[address] : "0"; }
+    void write(int address, string data) { if (address >= 0 && address < cells.size()) cells[address] = data; }
+};
+
+// ==========================================
+// MICROPROCESADOR (CPU)
+// ==========================================
+class CPU {
+private:
+    int PC; string IR; int MAR; string MBR; int ACC; // Específicos
+    int AL, AH, BL, BH;                              // Generales
+    
+    Memory* memory;
+    ControlUnit cu;
+    Instruction currentInstruction;
+    bool isRunning;
+
+    int* getRegister(const string& name) {
+        if (name == "AL") return &AL;
+        if (name == "AH") return &AH;
+        if (name == "BL") return &BL;
+        if (name == "BH") return &BH;
+        return nullptr;
+    }
+
+public:
+    CPU(Memory* mem) : memory(mem), PC(0), IR(""), MAR(0), MBR(""), ACC(0), 
+                       AL(0), AH(0), BL(0), BH(0), isRunning(false) {}
+
+    void printState(const string& stage) {
+        cout << "\n--- Estado: " << stage << " ---" << endl;
+        cout << "PC: " << setw(4) << PC << " | IR: " << setw(12) << IR << " | MAR: " << setw(4) << MAR 
+             << " | MBR: " << setw(6) << MBR << " | ACC: " << ACC << endl;
+        cout << "Registros -> AL: " << AL << " | AH: " << AH << " | BL: " << BL << " | BH: " << BH << endl;
+    }
+
+    void fetch() {
+        MAR = PC;                 
+        MBR = memory->read(MAR);  
+        IR = MBR;                 
+        PC++;                     
+        printState("FETCH");
+    }
+
+    void decode() {
+        // La Unidad de Control se encarga de utilizar el analizador léxico
+        currentInstruction = cu.decode(IR);
+        
+        cout << "   [!] CU Decodificando: " << currentInstruction.getName() 
+             << " (Args: " << currentInstruction.getLength() << ")" << endl;
+        cout << "   [!] Interpretacion: " << currentInstruction.getInterpretation() << endl;
+        
+        printState("DECODE");
+    }
+
+    void execute() {
+        string name = currentInstruction.getName();
+        vector<string> args = currentInstruction.getArguments();
+
+        if (name == "START") {
+            isRunning = true;
+        } else if (name == "STOP") {
+            isRunning = false;
+        } else if (name == "MOVE" && currentInstruction.getLength() == 2) {
+            MAR = stoi(args[1]);              
+            MBR = memory->read(MAR);       
+            int* reg = getRegister(args[0]);
+            if (reg) *reg = stoi(MBR);     
+        } else if (name == "ADD" && currentInstruction.getLength() == 2) {
+            int* r1 = getRegister(args[0]);
+            int* r2 = getRegister(args[1]);
+            if (r1 && r2) { ACC = *r1 + *r2; *r1 = ACC; }
+        } else if (name == "SUB" && currentInstruction.getLength() == 2) {
+            int* r1 = getRegister(args[0]);
+            int* r2 = getRegister(args[1]);
+            if (r1 && r2) { ACC = *r1 - *r2; *r1 = ACC; }
+        } else if (name == "MUL" && currentInstruction.getLength() == 2) {
+            int* r1 = getRegister(args[0]);
+            int* r2 = getRegister(args[1]);
+            if (r1 && r2) { ACC = *r1 * *r2; *r1 = ACC; }
+        } else if (name == "DIV" && currentInstruction.getLength() == 2) {
+            int* r1 = getRegister(args[0]);
+            int* r2 = getRegister(args[1]);
+            if (r1 && r2 && *r2 != 0) { ACC = *r1 / *r2; *r1 = ACC; }
+        } else if (name == "STO" && currentInstruction.getLength() == 1) {
+            MAR = stoi(args[0]);
+            MBR = to_string(ACC);
+            memory->write(MAR, MBR);
+        }
+        printState("EXECUTE");
+    }
+
+    void run() {
+        isRunning = true;
+        while (isRunning) {
+            fetch();
+            decode();
+            execute();
+            if (!isRunning) break;
+        }
+    }
+};
+
+// ==========================================
+// CARGADOR DE PROGRAMA (LOADER)
+// ==========================================
+class Loader {
+public:
+    static void loadProgram(Memory& mem, const vector<string>& program, const map<int, string>& data) {
+        for (int i = 0; i < program.size(); i++) {
+            mem.write(i, program[i]);
+        }
+        for (auto const& [address, value] : data) {
+            mem.write(address, value);
+        }
+        cout << "[+] Programa y Datos cargados por el Loader.\n" << endl;
+    }
+};
+
+// ==========================================
+// MAIN
+// ==========================================
+int main() {
+    Memory ram;
+    CPU cpu(&ram);
+
+    // Conjunto de instrucciones válidas (Aritmética compleja para probar)
+    vector<string> programa = {
+        "START",
+        "MOVE AL 50",   // Carga 20
+        "MOVE BL 51",   // Carga 4
+        "MUL AL BL",    // AL = 20 * 4 = 80 (ACC = 80)
+        "MOVE AH 52",   // Carga 10
+        "SUB AL AH",    // AL = 80 - 10 = 70 (ACC = 70)
+        "STO 100",      // Guarda 70 en RAM[100]
+        "STOP"
+    };
+
+    map<int, string> datos = {
+        {50, "20"}, 
+        {51, "4"},
+        {52, "10"}
+    };
+
+    Loader::loadProgram(ram, programa, datos);
+    cpu.run();
+
+    cout << "\n--- RESULTADO DE LA OPERACION ARITMETICA ---" << endl;
+    cout << "Ecuacion procesada: (20 * 4) - 10" << endl;
+    cout << "Resultado guardado en direccion 100: " << ram.read(100) << endl;
+
+    return 0;
+}
