@@ -1,1 +1,33 @@
-
+Documentación Técnica: Autómata Finito (FSA) para Validación de Cifras Numéricas
+1. Descripción General
+El analizador léxico implementado (NumericFSA_Completo.cpp) tiene como objetivo validar secuencias de caracteres (lexemas) para determinar si representan una cifra numérica válida.
+El código está construido bajo el paradigma de Programación Orientada a Objetos (POO) y modela un Autómata Finito Determinista (DFA). Es capaz de reconocer:
+  -Números enteros (ej. 123, 0).
+  -Números decimales o de punto flotante (ej. 3.1415).
+  -Números en notación científica (ej. 2e10, 1.5E-4).
+2. Arquitectura de Estados (enum State)
+El autómata se define a través de un conjunto finito de estados lógicos. La transición entre estos estados depende del carácter que se esté leyendo.
+  -START (q0): Estado inicial. Espera el primer dígito del número.
+  -IN_INT (q1): Estado de aceptación. El autómata ha leído una serie de dígitos enteros.
+  -IN_DEC (q2): Estado de transición. Se ha detectado un punto decimal (.), por lo que el autómata espera obligatoriamente un dígito fraccionario.
+  -IN_FRAC (q3): Estado de aceptación. Se están leyendo los dígitos después del punto decimal.
+  -IN_EXP (q4): Estado de transición. Se ha leído el símbolo de exponente (e o E). Espera un signo o un dígito.
+  -IN_EXP_SIGN (q5): Estado de transición. Se ha leído un signo (+ o -) para el exponente. Espera obligatoriamente un dígito.
+  -IN_EXP_DIGIT (q6): Estado de aceptación. Se están leyendo los dígitos finales del exponente.
+  -ERROR_STATE (q_err): Estado trampa. Si se detecta un carácter no válido (ej. letras distintas de 'e', o dobles puntos decimales), el autómata cae aquí y la cadena se invalida irremediablemente.
+3. Componentes de la Clase NumericFSA
+La clase NumericFSA encapsula todo el comportamiento del autómata, protegiendo su estado interno.
+3.1 Atributos Privados
+  -State currentState;: Almacena el estado activo del autómata. Se inicializa en START.
+3.2 Métodos Auxiliares (Privados)
+Evalúan a qué categoría léxica pertenece un carácter:
+  -bool isDigit(char c): Devuelve true si es un número del '0' al '9'.
+  -bool isSign(char c): Devuelve true si es '+' o '-'.
+  -bool isExponent(char c): Devuelve true si es 'e' o 'E'.
+3.3 Función de Transición (Privada)
+  -void transition(char c): Es el corazón del autómata. Contiene un bloque switch que evalúa el currentState y el carácter de entrada c para mover el autómata al siguiente estado lógico. Equivale a la tabla de transiciones matemática $\delta(q, a) = p$.
+3.4 Métodos Públicos (Interfaz)
+  -NumericFSA(): Constructor. Prepara el autómata en el estado START.
+  -void reset(): Reinicia el autómata al estado START. Es vital invocarlo antes de evaluar un nuevo lexema.
+  -bool isAccepting(): Evalúa si el currentState es uno de los estados finales válidos (IN_INT, IN_FRAC, o IN_EXP_DIGIT).
+  -bool validate(string lexeme): Método principal. Recorre el string carácter por carácter, invocando a transition(). Retorna true si al finalizar la cadena, el autómata se encuentra en un estado de aceptación y no cayó en el estado de error.
