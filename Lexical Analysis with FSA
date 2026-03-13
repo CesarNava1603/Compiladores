@@ -1,0 +1,158 @@
+#include <iostream>
+#include <string>
+
+using namespace std;
+
+// ==========================================
+// 1. DEFINICIÓN DE ESTADOS DEL AUTÓMATA
+// ==========================================
+// Estos son los estados lógicos del diagrama de transiciones para números
+enum State {
+    START,          // q0: Estado inicial
+    IN_INT,         // q1: Leyendo parte entera (Estado de Aceptación)
+    IN_DEC,         // q2: Leyendo punto decimal
+    IN_FRAC,        // q3: Leyendo parte fraccionaria (Estado de Aceptación)
+    IN_EXP,         // q4: Leyendo 'e' o 'E'
+    IN_EXP_SIGN,    // q5: Leyendo signo del exponente (+ o -)
+    IN_EXP_DIGIT,   // q6: Leyendo dígitos del exponente (Estado de Aceptación)
+    ERROR_STATE     // q_err: Estado de trampa/error
+};
+
+// ==========================================
+// 2. CLASE DEL AUTÓMATA (FSA)
+// ==========================================
+class NumericFSA {
+private:
+    State currentState;
+
+    // Métodos auxiliares privados para clasificar caracteres
+    bool isDigit(char c) {
+        return c >= '0' && c <= '9';
+    }
+
+    bool isSign(char c) {
+        return c == '+' || c == '-';
+    }
+
+    bool isExponent(char c) {
+        return c == 'e' || c == 'E';
+    }
+
+    // Lógica principal del diagrama de transiciones (FSA)
+    void transition(char c) {
+        switch (currentState) {
+            case START:
+                if (isDigit(c)) currentState = IN_INT;
+                else currentState = ERROR_STATE;
+                break;
+
+            case IN_INT:
+                if (isDigit(c)) currentState = IN_INT;
+                else if (c == '.') currentState = IN_DEC;
+                else if (isExponent(c)) currentState = IN_EXP;
+                else currentState = ERROR_STATE;
+                break;
+
+            case IN_DEC:
+                if (isDigit(c)) currentState = IN_FRAC;
+                else currentState = ERROR_STATE;
+                break;
+
+            case IN_FRAC:
+                if (isDigit(c)) currentState = IN_FRAC;
+                else if (isExponent(c)) currentState = IN_EXP;
+                else currentState = ERROR_STATE;
+                break;
+
+            case IN_EXP:
+                if (isSign(c)) currentState = IN_EXP_SIGN;
+                else if (isDigit(c)) currentState = IN_EXP_DIGIT;
+                else currentState = ERROR_STATE;
+                break;
+
+            case IN_EXP_SIGN:
+                if (isDigit(c)) currentState = IN_EXP_DIGIT;
+                else currentState = ERROR_STATE;
+                break;
+
+            case IN_EXP_DIGIT:
+                if (isDigit(c)) currentState = IN_EXP_DIGIT;
+                else currentState = ERROR_STATE;
+                break;
+
+            case ERROR_STATE:
+                // Si cae en error, se queda en error (Trampa)
+                break;
+        }
+    }
+
+public:
+    // Constructor
+    NumericFSA() {
+        currentState = START;
+    }
+
+    // Reinicia el autómata al estado inicial
+    void reset() {
+        currentState = START;
+    }
+
+    // Verifica si el estado actual es válido para terminar
+    bool isAccepting() {
+        return currentState == IN_INT || 
+               currentState == IN_FRAC || 
+               currentState == IN_EXP_DIGIT;
+    }
+
+    // Método público para validar una cadena completa (Lexema)
+    bool validate(string lexeme) {
+        reset(); // Asegurarnos de iniciar desde q0
+        
+        for (size_t i = 0; i < lexeme.length(); i++) {
+            transition(lexeme[i]);
+            
+            // Optimización: Salida temprana si cae en la trampa
+            if (currentState == ERROR_STATE) {
+                return false; 
+            }
+        }
+        
+        return isAccepting();
+    }
+};
+
+// ==========================================
+// 3. FUNCIÓN PRINCIPAL (Pruebas de Integración)
+// ==========================================
+int main() {
+    // Instanciamos nuestro validador
+    NumericFSA numValidator;
+
+    // Arreglo con tokens de prueba (algunos válidos, otros inválidos)
+    string testTokens[] = {
+        "50",         // Entero simple (Válido)
+        "3.1415",     // Decimal (Válido)
+        "12e-5",      // Notación científica (Válido)
+        "2E4",        // Notación científica simple (Válido)
+        "MOVE",       // Letras (Inválido)
+        "12.3.4",     // Doble punto (Inválido)
+        "e10",        // Empieza con 'e' (Inválido)
+        "45.",        // Termina en punto sin fracción (Inválido)
+        "10e+"        // Termina en signo sin exponente (Inválido)
+    };
+    
+    cout << "===============================================" << endl;
+    cout << "   ANALISIS LEXICO: VALIDACION DE CIFRAS (FSA) " << endl;
+    cout << "===============================================" << endl;
+
+    // Recorremos y evaluamos cada token
+    for (const string& token : testTokens) {
+        if (numValidator.validate(token)) {
+            cout << " [ OK ] Token: " << token << " -> ES UN NUMERO VALIDO" << endl;
+        } else {
+            cout << " [FAIL] Token: " << token << " -> NO ES UN NUMERO (o es invalido)" << endl;
+        }
+    }
+
+    return 0;
+}
